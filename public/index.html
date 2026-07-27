@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EEF1F4;
+  --panel:#FFFFFF;
+  --ink:#0F1419;
+  --ink-2:#5A6672;
+  --ink-3:#8D99A5;
+  --line:#DCE2E8;
+  --accent:#0E7C5A;
+  --accent-soft:#E4F1EC;
+  --warn:#B4761A;
+  --warn-soft:#FBF0DC;
+  --danger:#A93226;
+  --radius:6px;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'Instrument Sans',system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;font-family:var(--sans);background:var(--paper);color:var(--ink);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+}
+button{font:inherit;cursor:pointer}
+input,textarea,select{font:inherit}
+
+/* ---------- login ---------- */
+#login{
+  height:100%;display:grid;place-items:center;padding:24px;
+}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  padding:32px;width:100%;max-width:360px;
+}
+.card h1{
+  font-size:19px;margin:0 0 4px;font-weight:600;letter-spacing:-0.01em;
+}
+.card p.sub{margin:0 0 24px;color:var(--ink-2);font-size:13px}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--ink-2);margin:0 0 5px;font-weight:500}
+.field{margin-bottom:14px}
+input[type=text],input[type=email],input[type=password]{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--panel);color:var(--ink);outline:none;
+}
+input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.btn{
+  background:var(--accent);color:#fff;border:0;border-radius:var(--radius);
+  padding:9px 16px;font-weight:500;
+}
+.btn:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line)}
+.btn.ghost:hover{background:var(--paper);filter:none;color:var(--ink)}
+.btn.wide{width:100%}
+.err{color:var(--danger);font-size:13px;margin-top:10px;min-height:18px}
+
+/* ---------- shell ---------- */
+#app{display:none;height:100%;grid-template-columns:200px 320px 1fr}
+.rail,.list,.thread{height:100%;min-height:0;display:flex;flex-direction:column}
+.rail{background:var(--paper);border-right:1px solid var(--line);padding:16px 12px}
+.brand{
+  font-weight:600;font-size:14px;letter-spacing:-0.01em;padding:0 8px 16px;
+  display:flex;align-items:center;gap:8px;
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.dot.off{background:var(--ink-3)}
+.filter{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  padding:7px 8px;border-radius:var(--radius);color:var(--ink-2);
+  background:none;border:0;width:100%;text-align:left;
+}
+.filter:hover{background:#E4E9EE}
+.filter[aria-current=true]{background:var(--panel);color:var(--ink);font-weight:500;
+  box-shadow:0 1px 2px rgba(15,20,25,.06)}
+.count{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.filter[aria-current=true] .count{color:var(--accent)}
+.rail-foot{margin-top:auto;padding:8px;font-size:12px;color:var(--ink-3)}
+.rail-foot button{background:none;border:0;color:var(--ink-2);padding:0;font-size:12px;
+  text-decoration:underline;text-underline-offset:2px}
+
+/* ---------- list ---------- */
+.list{background:var(--panel);border-right:1px solid var(--line)}
+.list-head,.thread-head{
+  padding:14px 16px;border-bottom:1px solid var(--line);flex:none;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.list-head h2{margin:0;font-size:13px;font-weight:600}
+.scroll{overflow-y:auto;flex:1;min-height:0}
+.conv{
+  display:block;width:100%;text-align:left;background:none;border:0;
+  border-bottom:1px solid var(--line);padding:12px 16px 10px;
+}
+.conv:hover{background:#F7F9FA}
+.conv[aria-current=true]{background:var(--accent-soft)}
+.conv-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.name{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.time{font-family:var(--mono);font-size:11px;color:var(--ink-3);flex:none}
+.preview{color:var(--ink-2);font-size:13px;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-foot{display:flex;align-items:center;gap:8px;margin-top:8px}
+.unread{
+  background:var(--accent);color:#fff;font-family:var(--mono);font-size:10px;
+  border-radius:9px;padding:1px 6px;flex:none;
+}
+.assignee{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+
+/* ---------- SIGNATURE: the window meter ---------- */
+/* WhatsApp only allows free replies for 24h after the customer writes.
+   Everything an agent does is governed by it, so it is drawn, not stated. */
+.meter{height:2px;background:var(--line);border-radius:2px;flex:1;overflow:hidden}
+.meter span{display:block;height:100%;background:var(--accent);
+  transition:width .6s linear}
+.meter.warn span{background:var(--warn)}
+.meter.closed{background:repeating-linear-gradient(
+  -45deg,var(--line),var(--line) 3px,transparent 3px,transparent 6px)}
+.meter.closed span{width:0}
+
+/* ---------- thread ---------- */
+.thread{background:var(--paper)}
+.thread-head h2{margin:0;font-size:14px;font-weight:600}
+.thread-head .wa{font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+.head-actions{display:flex;gap:6px;flex:none}
+.head-actions .btn{padding:6px 11px;font-size:13px}
+.msgs{overflow-y:auto;flex:1;min-height:0;padding:20px 24px;
+  display:flex;flex-direction:column;gap:3px}
+.msg{max-width:min(560px,72%);padding:8px 12px;border-radius:var(--radius);
+  border:1px solid var(--line);background:var(--panel);align-self:flex-start;
+  white-space:pre-wrap;word-break:break-word}
+.msg.out{align-self:flex-end;background:var(--accent-soft);border-color:#CBE3D9}
+.msg.failed{background:#FBEAE8;border-color:#F0CFCB}
+.msg + .msg{margin-top:1px}
+.meta{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:4px;
+  display:flex;gap:8px;align-items:center}
+.msg.out .meta{justify-content:flex-end}
+.daybreak{align-self:center;font-family:var(--mono);font-size:10px;color:var(--ink-3);
+  text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px}
+
+/* ---------- composer ---------- */
+.composer{flex:none;border-top:1px solid var(--line);background:var(--panel);padding:12px 16px}
+.window-strip{display:flex;align-items:center;gap:10px;margin-bottom:10px;
+  font-size:12px;color:var(--ink-2)}
+.window-strip.closed{color:var(--warn)}
+.clock{font-family:var(--mono);font-size:12px;flex:none}
+textarea{
+  width:100%;border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;
+  resize:none;outline:none;min-height:62px;font-family:var(--sans);
+}
+.composer-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px}
+.hint{font-size:12px;color:var(--ink-3)}
+.locked{
+  background:var(--warn-soft);border:1px solid #EAD6AC;border-radius:var(--radius);
+  padding:14px;
+}
+.locked h3{margin:0 0 4px;font-size:13px;font-weight:600;color:var(--warn)}
+.locked p{margin:0 0 12px;font-size:13px;color:var(--ink-2)}
+.locked select{width:100%;padding:8px 10px;border:1px solid var(--line);
+  border-radius:var(--radius);background:var(--panel);margin-bottom:8px}
+
+.empty{margin:auto;text-align:center;color:var(--ink-3);padding:40px;max-width:280px}
+.empty strong{display:block;color:var(--ink-2);font-weight:500;margin-bottom:4px}
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--ink);color:#fff;padding:9px 16px;border-radius:var(--radius);
+  font-size:13px;z-index:50;
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (max-width:900px){
+  #app{grid-template-columns:1fr}
+  .rail,.list{display:none}
+  #app.show-list .list{display:flex}
+  #app.show-list .thread{display:none}
+}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form class="card" id="loginForm">
+    <h1>Inbox</h1>
+    <p class="sub">Sign in to your workspace.</p>
+    <div class="field">
+      <label for="tenant">Workspace</label>
+      <input id="tenant" type="text" value="test-client" autocomplete="organization" required>
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+    </div>
+    <button class="btn wide" type="submit" id="loginBtn">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </form>
+</div>
+
+<div id="app">
+  <nav class="rail">
+    <div class="brand"><span class="dot off" id="liveDot"></span><span id="brandName">Inbox</span></div>
+    <button class="filter" data-filter="all"        aria-current="true">Open <span class="count" id="c-open">0</span></button>
+    <button class="filter" data-filter="mine"       aria-current="false">Mine <span class="count" id="c-mine">0</span></button>
+    <button class="filter" data-filter="unassigned" aria-current="false">Unassigned <span class="count" id="c-unassigned">0</span></button>
+    <button class="filter" data-filter="resolved"   aria-current="false">Resolved <span class="count"></span></button>
+    <div class="rail-foot">
+      <div id="agentName"></div>
+      <button id="signOut">Sign out</button>
+    </div>
+  </nav>
+
+  <section class="list">
+    <div class="list-head"><h2 id="listTitle">Open</h2></div>
+    <div class="scroll" id="convList"></div>
+  </section>
+
+  <section class="thread">
+    <div class="thread-head" id="threadHead" style="display:none">
+      <div>
+        <h2 id="tName"></h2>
+        <div class="wa" id="tWa"></div>
+      </div>
+      <div class="head-actions">
+        <button class="btn ghost" id="btnAssign">Assign to me</button>
+        <button class="btn ghost" id="btnResolve">Resolve</button>
+      </div>
+    </div>
+    <div class="msgs" id="msgs">
+      <div class="empty"><strong>No conversation selected</strong>Pick one from the list to read it.</div>
+    </div>
+    <div class="composer" id="composer" style="display:none"></div>
+  </section>
+</div>
+
+<script>
+const API = location.origin;
+let token = sessionStorage.getItem('wa_token') || null;
+let me = null, ws = null, filter = 'all', convs = [], active = null, templates = [];
+let tick = null;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token, ...(opts.headers||{}) }
+  });
+  if (res.status === 401) { signOut(); throw new Error('Session expired'); }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(body.message || 'Request failed'), { body, status: res.status });
+  return body;
+}
+
+function toast(text) {
+  const el = document.createElement('div');
+  el.className = 'toast'; el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+/* ---------- time ---------- */
+function clockTime(iso) {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+function relTime(iso) {
+  if (!iso) return '';
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return mins + 'm';
+  if (mins < 1440) return Math.round(mins / 60) + 'h';
+  return Math.round(mins / 1440) + 'd';
+}
+/** Remaining service window, as fraction and human string. */
+function windowState(expiresAt) {
+  if (!expiresAt) return { open: false, frac: 0, label: 'Closed' };
+  const ms = new Date(expiresAt) - Date.now();
+  if (ms <= 0) return { open: false, frac: 0, label: 'Closed' };
+  const frac = Math.max(0, Math.min(1, ms / 86400000));
+  const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+  return { open: true, frac, label: h >= 1 ? `${h}h ${m}m left` : `${m}m left` };
+}
+
+/* ---------- auth ---------- */
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('loginBtn').disabled = true; $('loginErr').textContent = '';
+  try {
+    const res = await fetch(API + '/api/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant: $('tenant').value.trim(),
+        email: $('email').value.trim(),
+        password: $('password').value
+      })
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error === 'invalid credentials'
+      ? 'That email and password do not match this workspace.' : 'Sign in failed.');
+    token = body.token; me = body.agent;
+    sessionStorage.setItem('wa_token', token);
+    start();
+  } catch (err) {
+    $('loginErr').textContent = err.message;
+  } finally {
+    $('loginBtn').disabled = false;
+  }
+});
+
+function signOut() {
+  if (token) fetch(API + '/api/auth/logout', {
+    method: 'POST', headers: { authorization: 'Bearer ' + token }
+  }).catch(() => {});
+  sessionStorage.removeItem('wa_token');
+  token = null; me = null;
+  ws?.close(); clearInterval(tick);
+  $('app').style.display = 'none'; $('login').style.display = 'grid';
+}
+$('signOut').addEventListener('click', signOut);
+
+/* ---------- boot ---------- */
+async function start() {
+  me = await api('/api/me');
+  $('login').style.display = 'none';
+  $('app').style.display = 'grid';
+  $('agentName').textContent = me.name;
+  await Promise.all([loadCounts(), loadConvs()]);
+  loadTemplates();
+  connectWs();
+  // The window meter has to move on its own; nothing else redraws it.
+  tick = setInterval(() => { renderList(); if (active) renderComposer(); }, 30000);
+}
+
+async function loadTemplates() {
+  try { templates = await api('/api/templates?approved=true'); } catch { templates = []; }
+}
+
+async function loadCounts() {
+  const c = await api('/api/counts');
+  $('c-open').textContent = c.open;
+  $('c-mine').textContent = c.mine;
+  $('c-unassigned').textContent = c.unassigned;
+}
+
+async function loadConvs() {
+  const res = await api('/api/conversations?filter=' + filter);
+  convs = res.conversations;
+  renderList();
+}
+
+/* ---------- list ---------- */
+function renderList() {
+  const box = $('convList');
+  if (!convs.length) {
+    box.innerHTML = `<div class="empty"><strong>Nothing here</strong>
+      Messages from customers will appear in this list.</div>`;
+    return;
+  }
+  box.innerHTML = convs.map(c => {
+    const w = windowState(c.window_expires_at);
+    const meterClass = !w.open ? 'meter closed' : (w.frac < 0.25 ? 'meter warn' : 'meter');
+    return `
+    <button class="conv" data-id="${c.id}" aria-current="${active === c.id}">
+      <div class="conv-top">
+        <span class="name">${esc(c.profile_name || c.wa_id)}</span>
+        <span class="time">${relTime(c.last_message_at)}</span>
+      </div>
+      <div class="preview">${esc(c.last_message_preview || 'No messages yet')}</div>
+      <div class="conv-foot">
+        ${c.unread_count > 0 ? `<span class="unread">${c.unread_count}</span>` : ''}
+        <span class="${meterClass}" title="${w.label}"><span style="width:${w.frac*100}%"></span></span>
+        <span class="assignee">${c.assigned_agent_name ? esc(c.assigned_agent_name) : 'Unassigned'}</span>
+      </div>
+    </button>`;
+  }).join('');
+
+  box.querySelectorAll('.conv').forEach(el =>
+    el.addEventListener('click', () => openConv(el.dataset.id)));
+}
+
+document.querySelectorAll('.filter').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    document.querySelectorAll('.filter').forEach(b => b.setAttribute('aria-current', 'false'));
+    btn.setAttribute('aria-current', 'true');
+    filter = btn.dataset.filter;
+    $('listTitle').textContent = btn.textContent.trim().replace(/\d+$/, '').trim();
+    await loadConvs();
+  });
+});
+
+/* ---------- thread ---------- */
+async function openConv(id) {
+  active = id;
+  const conv = await api('/api/conversations/' + id);
+  const { messages } = await api(`/api/conversations/${id}/messages`);
+
+  $('threadHead').style.display = 'flex';
+  $('tName').textContent = conv.profile_name || conv.wa_id;
+  $('tWa').textContent = '+' + conv.wa_id;
+  $('btnAssign').textContent =
+    conv.assigned_agent_id === me.agentId ? 'Assigned to you' : 'Assign to me';
+  $('btnAssign').disabled = conv.assigned_agent_id === me.agentId;
+  $('btnResolve').textContent = conv.status === 'resolved' ? 'Reopen' : 'Resolve';
+
+  window._conv = conv;
+  renderMsgs(messages);
+  renderComposer();
+  renderList();
+
+  if (conv.unread_count > 0) {
+    await api(`/api/conversations/${id}/read`, { method: 'POST' });
+    await loadCounts();
+    const local = convs.find(c => c.id === id);
+    if (local) { local.unread_count = 0; renderList(); }
+  }
+}
+
+function renderMsgs(messages) {
+  const box = $('msgs');
+  if (!messages.length) {
+    box.innerHTML = `<div class="empty"><strong>No messages yet</strong>
+      This conversation is empty.</div>`;
+    return;
+  }
+  let lastDay = '';
+  box.innerHTML = messages.map(m => {
+    const day = new Date(m.created_at).toDateString();
+    const br = day !== lastDay ? `<div class="daybreak">${day === new Date().toDateString()
+      ? 'Today' : day}</div>` : '';
+    lastDay = day;
+    const out = m.direction === 'outbound';
+    const who = out ? (m.sent_by_bot ? 'Bot' : (m.agent_name || 'You')) : '';
+    return br + `
+      <div class="msg ${out ? 'out' : ''} ${m.status === 'failed' ? 'failed' : ''}">
+        ${esc(m.body || '[' + m.type + ']')}
+        <div class="meta">
+          ${who ? esc(who) + ' ·' : ''} ${clockTime(m.created_at)}
+          ${out ? '· ' + esc(m.status) : ''}
+        </div>
+      </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------- composer: the window rule, made visible ---------- */
+function renderComposer() {
+  const conv = window._conv;
+  if (!conv) return;
+  const box = $('composer');
+  box.style.display = 'block';
+  const w = windowState(conv.window_expires_at);
+
+  if (w.open) {
+    box.innerHTML = `
+      <div class="window-strip">
+        <span class="${w.frac < 0.25 ? 'meter warn' : 'meter'}"><span style="width:${w.frac*100}%"></span></span>
+        <span class="clock">${w.label}</span>
+      </div>
+      <textarea id="draft" placeholder="Write a reply" aria-label="Reply"></textarea>
+      <div class="composer-foot">
+        <span class="hint">Enter to send · Shift+Enter for a new line</span>
+        <button class="btn" id="btnSend">Send</button>
+      </div>`;
+    $('btnSend').addEventListener('click', sendText);
+    $('draft').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+    });
+    $('draft').focus();
+  } else {
+    const opts = templates.map(t =>
+      `<option value="${esc(t.name)}|${esc(t.language)}">${esc(t.name)} (${esc(t.language)})</option>`).join('');
+    box.innerHTML = `
+      <div class="locked">
+        <h3>Reply window closed</h3>
+        <p>More than 24 hours have passed since ${esc(conv.profile_name || 'this customer')} last
+           wrote. WhatsApp only allows an approved template until they reply again.</p>
+        ${templates.length
+          ? `<select id="tplPick" aria-label="Template">${opts}</select>
+             <button class="btn" id="btnTpl">Send template</button>`
+          : `<p class="hint">No approved templates yet. Sync them from your WhatsApp account first.</p>`}
+      </div>`;
+    $('btnTpl')?.addEventListener('click', sendTemplate);
+  }
+}
+
+async function sendText() {
+  const el = $('draft');
+  const text = el.value.trim();
+  if (!text) return;
+  el.value = ''; el.disabled = true;
+  try {
+    await api(`/api/conversations/${active}/messages`, {
+      method: 'POST', body: JSON.stringify({ text })
+    });
+    const { messages } = await api(`/api/conversations/${active}/messages`);
+    renderMsgs(messages);
+  } catch (err) {
+    if (err.body?.error === 'window_closed') {
+      toast('The 24-hour reply window closed. Send a template instead.');
+      const conv = await api('/api/conversations/' + active);
+      window._conv = conv; renderComposer();
+    } else {
+      toast(err.message); el.value = text;
+    }
+  } finally {
+    el.disabled = false; el.focus?.();
+  }
+}
+
+async function sendTemplate() {
+  const [name, language] = $('tplPick').value.split('|');
+  try {
+    await api(`/api/conversations/${active}/messages`, {
+      method: 'POST', body: JSON.stringify({ template: { name, language } })
+    });
+    toast('Template sent');
+    const { messages } = await api(`/api/conversations/${active}/messages`);
+    renderMsgs(messages);
+  } catch (err) { toast(err.message); }
+}
+
+$('btnAssign').addEventListener('click', async () => {
+  await api(`/api/conversations/${active}/assign`, { method: 'POST', body: '{}' });
+  toast('Assigned to you');
+  await Promise.all([loadCounts(), loadConvs()]);
+  openConv(active);
+});
+
+$('btnResolve').addEventListener('click', async () => {
+  const next = window._conv.status === 'resolved' ? 'open' : 'resolved';
+  await api(`/api/conversations/${active}/status`, {
+    method: 'POST', body: JSON.stringify({ status: next })
+  });
+  toast(next === 'resolved' ? 'Resolved' : 'Reopened');
+  await Promise.all([loadCounts(), loadConvs()]);
+});
+
+/* ---------- realtime ---------- */
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`);
+
+  ws.onopen = () => $('liveDot').classList.remove('off');
+  ws.onclose = () => {
+    $('liveDot').classList.add('off');
+    if (token) setTimeout(connectWs, 3000); // reconnect unless signed out
+  };
+  ws.onmessage = async (evt) => {
+    const { type, payload } = JSON.parse(evt.data);
+    if (type === 'ready') return;
+
+    if (type === 'message.received') {
+      await Promise.all([loadCounts(), loadConvs()]);
+      if (payload.conversationId === active) {
+        const { messages } = await api(`/api/conversations/${active}/messages`);
+        renderMsgs(messages);
+        await api(`/api/conversations/${active}/read`, { method: 'POST' });
+        // A new inbound message reopens the window.
+        window._conv = await api('/api/conversations/' + active);
+        renderComposer();
+      }
+    }
+    if (type === 'message.status' && payload.conversationId === active) {
+      const { messages } = await api(`/api/conversations/${active}/messages`);
+      renderMsgs(messages);
+    }
+    if (type === 'conversation.updated') loadConvs();
+  };
+}
+
+if (token) start().catch(signOut);
+</script>
+</body>
+</html>
