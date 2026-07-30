@@ -177,13 +177,13 @@ WhatsApp → API Setup:
     npm run dev       # API
     npm run worker    # queue worker, separate process
 
-Open **http://localhost:3001/app**
+Open **http://localhost:3000/app**
 
 ---
 
 ## Connecting Meta
 
-1. Expose the port publicly (`ngrok http 127.0.0.1:3001` in development)
+1. Expose the port publicly (`ngrok http 127.0.0.1:3000` in development)
 2. Meta dashboard → WhatsApp → Configuration → Webhook
    - Callback URL: `https://<host>/webhooks/meta`
    - Verify token: your `META_VERIFY_TOKEN`
@@ -273,7 +273,7 @@ Rules are evaluated by priority ascending; first match wins.
 Actions are `reply` or `escalate`. Escalating sets the conversation to
 pending, optionally assigns an agent, and pauses the bot.
 
-    curl -X POST localhost:3001/api/bot/rules \
+    curl -X POST localhost:3000/api/bot/rules \
       -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
       -d '{"name":"Opening hours","matchType":"keyword","priority":20,
            "keywords":["hours","timing","open"],
