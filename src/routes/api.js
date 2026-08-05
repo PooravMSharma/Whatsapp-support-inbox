@@ -5,7 +5,13 @@ import { sendText, sendTemplate, sendMedia, SendError } from '../lib/send.js';
 import { listTemplates, syncTemplates } from '../repos/templates.js';
 import * as botRepo from '../repos/bot.js';
 import { selectRule, isWithinBusinessHours } from '../lib/bot.js';
-import { one } from '../lib/db.js';
+import { tx , one } from '../lib/db.js';
+import { upsertContact, getOrCreateConversation } from '../repos/messaging.js';
+
+// Send a template to a phone number that may not have messaged us yet.
+  // Used by external apps (booking, reminders) — resolves the contact and
+  // conversation first, then goes through the same guarded send path.
+  
 
 export async function authRoutes(app) {
   app.post('/api/auth/login', async (req, reply) => {
@@ -84,6 +90,54 @@ export async function inboxRoutes(app) {
       messages: rows.reverse(), // oldest first for rendering
       nextBefore: rows.length ? rows[0].created_at : null,
     };
+  });
+
+  app.post('/api/send/template', async (req, reply) => {
+    const { to, name, language, variables } = req.body || {};
+    if (!to || !name) {
+      return reply.code(400).send({ error: 'to and name are required' });
+    }
+
+    const waId = String(to).replace(/\D/g, '');
+    const tenantId = req.auth.tenant_id;
+
+    const channel = await one(
+      `SELECT id FROM channels
+        WHERE tenant_id = $1 AND status = 'active'
+        ORDER BY created_at ASC LIMIT 1`,
+      [tenantId]
+    );
+    if (!channel) {
+      return reply.code(409).send({ error: 'no active channel' });
+    }
+
+    let conversationId;
+    try {
+      conversationId = await tx(async (client) => {
+        const contact = await upsertContact(client, { tenantId, waId });
+        const conversation = await getOrCreateConversation(client, {
+          tenantId,
+          channelId: channel.id,
+          contactId: contact.id,
+        });
+        return conversation.id;
+      });
+
+      const message = await sendTemplate({
+        tenantId,
+        conversationId,
+        name,
+        language: language ?? 'en',
+        variables: variables ?? {},
+      });
+
+      return { id: message.id, conversation_id: conversationId };
+    } catch (err) {
+      if (err.name === 'SendError') {
+        return reply.code(422).send({ error: err.code, message: err.message });
+      }
+      throw err;
+    }
   });
 
   app.post('/api/conversations/:id/assign', async (req, reply) => {
