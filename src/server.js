@@ -7,6 +7,7 @@ import { webhookRoutes } from './routes/webhook.js';
 import { authRoutes, inboxRoutes } from './routes/api.js';
 import { wsRoutes, bindRealtime } from './routes/ws.js';
 import { appRoutes } from './routes/app.js';
+import { sendApiRoutes } from './routes/send-api.js';
 import { initSubscriber, closeRealtime } from './lib/events.js';
 
 const app = Fastify({
@@ -55,6 +56,7 @@ await app.register(webhookRoutes);
 await app.register(authRoutes);
 await app.register(inboxRoutes);
 await app.register(wsRoutes);
+await app.register(sendApiRoutes);
 await app.register(appRoutes);
 
 await initSubscriber(app.log);
