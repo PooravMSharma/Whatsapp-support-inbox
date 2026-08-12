@@ -5,13 +5,10 @@ import { sendText, sendTemplate, sendMedia, SendError } from '../lib/send.js';
 import { listTemplates, syncTemplates } from '../repos/templates.js';
 import * as botRepo from '../repos/bot.js';
 import { selectRule, isWithinBusinessHours } from '../lib/bot.js';
-import { tx , one } from '../lib/db.js';
-import { upsertContact, getOrCreateConversation } from '../repos/messaging.js';
-
-// Send a template to a phone number that may not have messaged us yet.
-  // Used by external apps (booking, reminders) — resolves the contact and
-  // conversation first, then goes through the same guarded send path.
-  
+import * as kb from '../repos/kb.js';
+import { answerFromKnowledge } from '../lib/rag.js';
+import { health as ollamaHealth } from '../lib/ollama.js';
+import { one } from '../lib/db.js';
 
 export async function authRoutes(app) {
   app.post('/api/auth/login', async (req, reply) => {
@@ -90,54 +87,6 @@ export async function inboxRoutes(app) {
       messages: rows.reverse(), // oldest first for rendering
       nextBefore: rows.length ? rows[0].created_at : null,
     };
-  });
-
-  app.post('/api/send/template', async (req, reply) => {
-    const { to, name, language, variables } = req.body || {};
-    if (!to || !name) {
-      return reply.code(400).send({ error: 'to and name are required' });
-    }
-
-    const waId = String(to).replace(/\D/g, '');
-    const tenantId = req.auth.tenant_id;
-
-    const channel = await one(
-      `SELECT id FROM channels
-        WHERE tenant_id = $1 AND status = 'active'
-        ORDER BY created_at ASC LIMIT 1`,
-      [tenantId]
-    );
-    if (!channel) {
-      return reply.code(409).send({ error: 'no active channel' });
-    }
-
-    let conversationId;
-    try {
-      conversationId = await tx(async (client) => {
-        const contact = await upsertContact(client, { tenantId, waId });
-        const conversation = await getOrCreateConversation(client, {
-          tenantId,
-          channelId: channel.id,
-          contactId: contact.id,
-        });
-        return conversation.id;
-      });
-
-      const message = await sendTemplate({
-        tenantId,
-        conversationId,
-        name,
-        language: language ?? 'en',
-        variables: variables ?? {},
-      });
-
-      return { id: message.id, conversation_id: conversationId };
-    } catch (err) {
-      if (err.name === 'SendError') {
-        return reply.code(422).send({ error: err.code, message: err.message });
-      }
-      throw err;
-    }
   });
 
   app.post('/api/conversations/:id/assign', async (req, reply) => {
@@ -371,4 +320,105 @@ export async function inboxRoutes(app) {
         ?? (isWithinBusinessHours(settings.business_hours) ? null : settings.off_hours_reply),
     };
   });
+
+  // -----------------------------------------------------------------
+  // Knowledge base + retrieval
+  // -----------------------------------------------------------------
+
+  app.get('/api/kb/health', async () => ollamaHealth());
+
+  app.get('/api/kb/documents', async (req) => kb.listDocuments(req.auth.tenant_id));
+
+  app.post('/api/kb/documents', async (req, reply) => {
+    if (!adminOnly(req, reply)) return;
+    const { title, content, filename } = req.body || {};
+    if (!title || !content?.trim()) {
+      return reply.code(400).send({ error: 'title and content are required' });
+    }
+
+    const doc = await kb.createDocument(req.auth.tenant_id, {
+      title,
+      content,
+      sourceType: filename ? 'file' : 'paste',
+      filename,
+    });
+
+    // Index inline. Embedding a business document takes seconds on a
+    // local model, and a synchronous result is far easier to debug than
+    // a background job that silently fails.
+    try {
+      const { chunks } = await kb.indexDocument(req.auth.tenant_id, doc.id);
+      return reply.code(201).send({ ...doc, chunk_count: chunks, status: 'indexed' });
+    } catch (err) {
+      return reply.code(502).send({
+        error: 'index_failed',
+        message: err.message,
+        documentId: doc.id,
+      });
+    }
+  });
+
+  app.post('/api/kb/documents/:id/reindex', async (req, reply) => {
+    if (!adminOnly(req, reply)) return;
+    try {
+      const { chunks } = await kb.indexDocument(req.auth.tenant_id, req.params.id);
+      return { indexed: chunks };
+    } catch (err) {
+      return reply.code(502).send({ error: 'index_failed', message: err.message });
+    }
+  });
+
+  app.delete('/api/kb/documents/:id', async (req, reply) => {
+    if (!adminOnly(req, reply)) return;
+    const ok = await kb.deleteDocument(req.auth.tenant_id, req.params.id);
+    if (!ok) return reply.code(404).send({ error: 'not found' });
+    return { deleted: true };
+  });
+
+  /** What would retrieval find? No model call, no sending. */
+  app.post('/api/kb/search', async (req, reply) => {
+    const { query: q, topK } = req.body || {};
+    if (!q) return reply.code(400).send({ error: 'query is required' });
+    try {
+      const chunks = await kb.retrieve(req.auth.tenant_id, q, {
+        topK: Math.min(Number(topK) || 5, 20),
+      });
+      return { results: chunks.map((c) => ({
+        score: Number(c.score.toFixed(3)),
+        title: c.title,
+        content: c.content,
+      })) };
+    } catch (err) {
+      return reply.code(502).send({ error: 'search_failed', message: err.message });
+    }
+  });
+
+  /** Full dry run: retrieve, generate, but never send. */
+  app.post('/api/kb/ask', async (req, reply) => {
+    const { question } = req.body || {};
+    if (!question) return reply.code(400).send({ error: 'question is required' });
+
+    const settings = await botRepo.getSettings(req.auth.tenant_id);
+    const result = await answerFromKnowledge({
+      tenantId: req.auth.tenant_id,
+      question,
+      minScore: settings.rag_min_score,
+      topK: settings.rag_top_k,
+      systemPromptExtra: settings.rag_system_prompt,
+    });
+
+    return {
+      outcome: result.outcome,
+      answer: result.text ?? null,
+      topScore: result.topScore != null ? Number(result.topScore.toFixed(3)) : null,
+      error: result.error ?? null,
+      usedChunks: (result.chunks ?? []).map((c) => ({
+        score: Number(c.score.toFixed(3)),
+        title: c.title,
+        preview: c.content.slice(0, 120),
+      })),
+    };
+  });
+
+  app.get('/api/kb/stats', async (req) => kb.ragStats(req.auth.tenant_id));
 }

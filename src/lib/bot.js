@@ -1,6 +1,7 @@
 import { one, query } from '../lib/db.js';
 import * as bot from '../repos/bot.js';
 import { sendText, SendError } from './send.js';
+import { answerFromKnowledge } from './rag.js';
 import { publish } from './events.js';
 
 /**
@@ -56,13 +57,18 @@ export async function selectRule(rules, { text, isFirst }) {
   const body = normalize(text);
 
   for (const rule of rules) {
+    // 'rag' and 'fallback' are last resorts, handled after this loop.
+    if (rule.match_type === 'rag' || rule.match_type === 'fallback') continue;
     if (rule.match_type === 'greeting' && isFirst) return rule;
     if (rule.match_type === 'exact'
         && rule.keywords.some((k) => normalize(k) === body)) return rule;
     if (rule.match_type === 'keyword'
         && rule.keywords.some((k) => containsWord(body, k))) return rule;
   }
-  return rules.find((r) => r.match_type === 'fallback') ?? null;
+  // Retrieval gets the long tail before the blunt fallback does.
+  return rules.find((r) => r.match_type === 'rag')
+      ?? rules.find((r) => r.match_type === 'fallback')
+      ?? null;
 }
 
 /**
@@ -156,6 +162,55 @@ export async function handleInbound({ tenantId, conversationId, message }, logge
 
       publish('conversation.updated', { tenantId, conversationId });
       return 'escalated';
+    }
+
+    // --- retrieval-augmented answer
+
+    if (rule.match_type === 'rag') {
+      const result = await answerFromKnowledge({
+        tenantId,
+        conversationId,
+        question: message.body,
+        minScore: settings.rag_min_score,
+        topK: settings.rag_top_k,
+        systemPromptExtra: settings.rag_system_prompt,
+      });
+
+      if (result.outcome === 'answered') {
+        const sent = await deliver({ tenantId, conversationId, text: result.text });
+        await bot.logReply({
+          tenantId, conversationId, ruleId: rule.id,
+          inboundMessageId: message.id, outboundMessageId: sent?.id,
+          outcome: 'replied',
+        });
+        return 'replied:rag';
+      }
+
+      // Retrieval could not ground an answer, or Ollama is down. Either
+      // way a human takes it — with a holding message so the customer is
+      // not left staring at silence.
+      await query(
+        `UPDATE conversations
+            SET status = 'pending',
+                bot_paused_until = now() + ($2 || ' minutes')::interval,
+                updated_at = now()
+          WHERE id = $1`,
+        [conversationId, String(rule.pause_minutes)]
+      );
+
+      let sent = null;
+      if (rule.reply_text) {
+        sent = await deliver({ tenantId, conversationId, text: rule.reply_text });
+      }
+
+      await bot.logReply({
+        tenantId, conversationId, ruleId: rule.id,
+        inboundMessageId: message.id, outboundMessageId: sent?.id,
+        outcome: 'escalated',
+      });
+
+      publish('conversation.updated', { tenantId, conversationId });
+      return 'escalated:' + result.outcome;
     }
 
     if (!rule.reply_text) return skip('rule_has_no_text');
