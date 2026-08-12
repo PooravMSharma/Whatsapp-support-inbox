@@ -453,6 +453,27 @@ function renderMsgs(messages) {
   box.scrollTop = box.scrollHeight;
 }
 
+/** How many {{n}} placeholders a template's BODY expects. */
+function templateVarCount(tpl) {
+  const body = (tpl.components || []).find(c => c.type === 'BODY');
+  if (!body?.text) return 0;
+  const nums = [...body.text.matchAll(/\{\{(\d+)\}\}/g)].map(m => Number(m[1]));
+  return nums.length ? Math.max(...nums) : 0;
+}
+
+function renderTplVars() {
+  const [name, language] = $('tplPick').value.split('|');
+  const tpl = templates.find(t => t.name === name && t.language === language);
+  const n = tpl ? templateVarCount(tpl) : 0;
+  const body = (tpl?.components || []).find(c => c.type === 'BODY')?.text || '';
+
+  $('tplVars').innerHTML = n === 0 ? '' : `
+    <p class="hint" style="margin:8px 0 6px">${esc(body)}</p>
+    ${Array.from({ length: n }, (_, i) => `
+      <input type="text" id="tplVar${i + 1}" placeholder="Value for {{${i + 1}}}"
+             style="margin-bottom:6px" aria-label="Variable ${i + 1}">`).join('')}`;
+}
+
 /* ---------- composer: the window rule, made visible ---------- */
 function renderComposer() {
   const conv = window._conv;
@@ -487,10 +508,13 @@ function renderComposer() {
            wrote. WhatsApp only allows an approved template until they reply again.</p>
         ${templates.length
           ? `<select id="tplPick" aria-label="Template">${opts}</select>
+             <div id="tplVars"></div>
              <button class="btn" id="btnTpl">Send template</button>`
           : `<p class="hint">No approved templates yet. Sync them from your WhatsApp account first.</p>`}
       </div>`;
     $('btnTpl')?.addEventListener('click', sendTemplate);
+    $('tplPick')?.addEventListener('change', renderTplVars);
+    if ($('tplPick')) renderTplVars();
   }
 }
 
@@ -520,9 +544,17 @@ async function sendText() {
 
 async function sendTemplate() {
   const [name, language] = $('tplPick').value.split('|');
+  const tpl = templates.find(t => t.name === name && t.language === language);
+  const count = tpl ? templateVarCount(tpl) : 0;
+  const body = [];
+  for (let i = 1; i <= count; i++) {
+    const v = $('tplVar' + i)?.value.trim();
+    if (!v) return toast(`Fill in {{${i}}} first`);
+    body.push(v);
+  }
   try {
     await api(`/api/conversations/${active}/messages`, {
-      method: 'POST', body: JSON.stringify({ template: { name, language } })
+      method: 'POST', body: JSON.stringify({ template: { name, language, variables: { body } } })
     });
     toast('Template sent');
     const { messages } = await api(`/api/conversations/${active}/messages`);
